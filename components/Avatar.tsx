@@ -17,11 +17,11 @@ interface AvatarProps {
   audioAmplitude: number;
 }
 
-// URLs delle animazioni su GitHub (formato RAW per il caricamento)
+// URLs delle animazioni caricati dal nuovo CDN per evitare errori di caricamento locale
 const ANIMATION_URLS = {
-  talking: 'https://raw.githubusercontent.com/dynamick/receptionistAi/main/public/animations/Talking.fbx',
-  rumba: 'https://raw.githubusercontent.com/dynamick/receptionistAi/main/public/animations/rumba-dancing.fbx',
-  idle: 'https://raw.githubusercontent.com/dynamick/receptionistAi/main/public/animations/standing-idle.fbx'
+  talking: 'https://cdn.statically.io/gh/dynamick/cdn@main/receptionistAI/Talking.fbx',
+  rumba: 'https://cdn.statically.io/gh/dynamick/cdn@main/receptionistAI/rumba-dancing.fbx',
+  idle: 'https://cdn.statically.io/gh/dynamick/cdn@main/receptionistAI/standing-idle.fbx'
 };
 
 export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmplitude }) => {
@@ -31,12 +31,12 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
   // 1. Modello base GLTF (Ready Player Me)
   const { scene, animations: gltfAnimations } = useGLTF(modelUrl);
   
-  // 2. Caricamento file FBX da URL remote
+  // 2. Caricamento file FBX da URL remote (CDN)
   const talkFbx = useFBX(ANIMATION_URLS.talking);
   const idleRumbaFbx = useFBX(ANIMATION_URLS.rumba);
   const idleStandingFbx = useFBX(ANIMATION_URLS.idle);
 
-  // 3. Elaborazione e Retargeting
+  // 3. Elaborazione e Retargeting delle animazioni FBX per lo scheletro RPM
   const allAnimations = useMemo(() => {
     const clips: THREE.AnimationClip[] = [...gltfAnimations];
     
@@ -64,7 +64,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
   const { actions } = useAnimations(allAnimations, group);
   const [currentAction, setCurrentAction] = useState<string | null>(null);
 
-  // Riferimenti ossa per micro-movimenti e modifiche fisiche
+  // Riferimenti alle ossa per modifiche procedurali (seno, testa)
   const bones = useMemo(() => {
     const b: { 
       head?: THREE.Bone; 
@@ -85,7 +85,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
     return b;
   }, [scene]);
 
-  // Gestione del ballo casuale durante l'idle
+  // Logica per innescare un ballo casuale durante l'attesa (idle)
   useEffect(() => {
     if (isSpeaking) {
       setIsRandomDancing(false);
@@ -103,7 +103,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
     return () => clearInterval(interval);
   }, [isSpeaking]);
 
-  // 4. Gestione Transizioni Animazioni
+  // Gestione delle transizioni tra le animazioni (Fade In/Out)
   useEffect(() => {
     if (!actions) return;
     
@@ -131,18 +131,18 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
         setCurrentAction(nextAction);
       }
     }
-  }, [isSpeaking, isRandomDancing, actions, currentAction, allAnimations]);
+  }, [isSpeaking, isRandomDancing, actions, currentAction]);
 
   useFrame((state) => {
     if (!scene) return;
     const t = state.clock.getElapsedTime();
     
-    // 5. Lip Sync, Facial Expressions & Body Shape
+    // Lip Sync e Espressioni facciali basate sui Morph Targets
     scene.traverse((child) => {
       if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
         const mesh = child as THREE.SkinnedMesh;
         if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-          // Apertura bocca (Jaw) basata sull'ampiezza audio
+          // Apertura bocca (Jaw/JawOpen)
           const mouthOpenIdx = mesh.morphTargetDictionary['mouthOpen'] ?? mesh.morphTargetDictionary['jawOpen'];
           if (mouthOpenIdx !== undefined) {
             const target = isSpeaking ? audioAmplitude * 0.8 : 0;
@@ -151,7 +151,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
             mesh.morphTargetInfluences[mouthOpenIdx] = current + (desired - current) * 0.2;
           }
 
-          // Sorriso (Smile)
+          // Espressione sorriso (Smile)
           const smileTargets = ['mouthSmile', 'mouthSmileLeft', 'mouthSmileRight'];
           smileTargets.forEach(name => {
             const idx = mesh.morphTargetDictionary![name];
@@ -164,13 +164,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
             }
           });
 
-          // Dimensione Corpo/Seno (Morph Target se presente)
-          const breastMorphIdx = mesh.morphTargetDictionary['breastSize'] ?? mesh.morphTargetDictionary['chestSize'];
-          if (breastMorphIdx !== undefined) {
-            mesh.morphTargetInfluences[breastMorphIdx] = 0.8;
-          }
-
-          // Blinking occhi naturale
+          // Blinking occhi (Ammiccamento naturale)
           const blink = Math.sin(t * 3.8) > 0.98 ? 1 : 0;
           ['eyeBlinkLeft', 'eyeBlinkRight'].forEach(name => {
             const idx = mesh.morphTargetDictionary![name];
@@ -183,17 +177,17 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
       }
     });
 
-    // 6. Modifiche Fisiche Procedurali (Scaling Ossa)
-    // Forziamo lo scale ad ogni frame per contrastare il reset delle animazioni
+    // Scaling delle ossa per personalizzazione fisica (Seno)
     if (bones.leftBreast) bones.leftBreast.scale.set(1.4, 1.4, 1.4);
     if (bones.rightBreast) bones.rightBreast.scale.set(1.4, 1.4, 1.4);
 
-    // Micro-movimenti procedurali testa per dare vita all'idle
+    // Micro-movimenti della testa per dare vita all'avatar in idle
     if (bones.head && !isSpeaking && !isRandomDancing) {
       bones.head.rotation.x += Math.sin(t * 0.4) * 0.0003;
       bones.head.rotation.y += Math.cos(t * 0.3) * 0.0003;
     }
 
+    // Effetto galleggiamento leggero
     if (group.current) {
         group.current.position.y = Math.sin(t * 1.2) * 0.01 - 1.6;
     }
@@ -206,7 +200,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
   );
 };
 
-// Precaricamento risorse
+// Precaricamento delle risorse CDN
 useGLTF.preload('avatar.glb');
 useFBX.preload(ANIMATION_URLS.talking);
 useFBX.preload(ANIMATION_URLS.rumba);
