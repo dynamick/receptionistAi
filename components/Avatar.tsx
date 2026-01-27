@@ -17,6 +17,13 @@ interface AvatarProps {
   audioAmplitude: number;
 }
 
+// URLs delle animazioni su GitHub (formato RAW per il caricamento)
+const ANIMATION_URLS = {
+  talking: 'https://raw.githubusercontent.com/dynamick/receptionistAi/main/public/animations/Talking.fbx',
+  rumba: 'https://raw.githubusercontent.com/dynamick/receptionistAi/main/public/animations/rumba-dancing.fbx',
+  idle: 'https://raw.githubusercontent.com/dynamick/receptionistAi/main/public/animations/standing-idle.fbx'
+};
+
 export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmplitude }) => {
   const group = useRef<THREE.Group>(null);
   const [isRandomDancing, setIsRandomDancing] = useState(false);
@@ -24,10 +31,10 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
   // 1. Modello base GLTF (Ready Player Me)
   const { scene, animations: gltfAnimations } = useGLTF(modelUrl);
   
-  // 2. Caricamento file FBX (Mixamo)
-  const idleRumbaFbx = useFBX('animations/rumba-dancing.fbx');
-  const talkFbx = useFBX('animations/Talking.fbx');
-  const idleStandingFbx = useFBX('animations/standing-idle.fbx');
+  // 2. Caricamento file FBX da URL remote
+  const talkFbx = useFBX(ANIMATION_URLS.talking);
+  const idleRumbaFbx = useFBX(ANIMATION_URLS.rumba);
+  const idleStandingFbx = useFBX(ANIMATION_URLS.idle);
 
   // 3. Elaborazione e Retargeting
   const allAnimations = useMemo(() => {
@@ -39,7 +46,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
         const newClip = clip.clone();
         newClip.name = `${prefix}_${index}`;
         
-        // Rimuoviamo il prefisso 'mixamorig' per allinearlo allo scheletro RPM
+        // Retargeting: Rimuoviamo il prefisso 'mixamorig' per allinearlo allo scheletro Ready Player Me
         newClip.tracks.forEach((track) => {
           track.name = track.name.replace(/mixamorig|MixamoRig/g, '');
         });
@@ -135,7 +142,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
       if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
         const mesh = child as THREE.SkinnedMesh;
         if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-          // Apertura bocca
+          // Apertura bocca (Jaw) basata sull'ampiezza audio
           const mouthOpenIdx = mesh.morphTargetDictionary['mouthOpen'] ?? mesh.morphTargetDictionary['jawOpen'];
           if (mouthOpenIdx !== undefined) {
             const target = isSpeaking ? audioAmplitude * 0.8 : 0;
@@ -144,7 +151,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
             mesh.morphTargetInfluences[mouthOpenIdx] = current + (desired - current) * 0.2;
           }
 
-          // Sorriso
+          // Sorriso (Smile)
           const smileTargets = ['mouthSmile', 'mouthSmileLeft', 'mouthSmileRight'];
           smileTargets.forEach(name => {
             const idx = mesh.morphTargetDictionary![name];
@@ -157,13 +164,13 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
             }
           });
 
-          // Dimensione Seno (Morph Target se presente nel modello)
+          // Dimensione Corpo/Seno (Morph Target se presente)
           const breastMorphIdx = mesh.morphTargetDictionary['breastSize'] ?? mesh.morphTargetDictionary['chestSize'];
           if (breastMorphIdx !== undefined) {
-            mesh.morphTargetInfluences[breastMorphIdx] = 0.8; // Imposta un valore fisso elevato
+            mesh.morphTargetInfluences[breastMorphIdx] = 0.8;
           }
 
-          // Blinking occhi
+          // Blinking occhi naturale
           const blink = Math.sin(t * 3.8) > 0.98 ? 1 : 0;
           ['eyeBlinkLeft', 'eyeBlinkRight'].forEach(name => {
             const idx = mesh.morphTargetDictionary![name];
@@ -177,11 +184,11 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
     });
 
     // 6. Modifiche Fisiche Procedurali (Scaling Ossa)
-    // Applichiamo lo scale ogni frame nel caso le animazioni Mixamo resettino le ossa
+    // Forziamo lo scale ad ogni frame per contrastare il reset delle animazioni
     if (bones.leftBreast) bones.leftBreast.scale.set(1.4, 1.4, 1.4);
     if (bones.rightBreast) bones.rightBreast.scale.set(1.4, 1.4, 1.4);
 
-    // Micro-movimenti procedurali testa
+    // Micro-movimenti procedurali testa per dare vita all'idle
     if (bones.head && !isSpeaking && !isRandomDancing) {
       bones.head.rotation.x += Math.sin(t * 0.4) * 0.0003;
       bones.head.rotation.y += Math.cos(t * 0.3) * 0.0003;
@@ -199,4 +206,8 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
   );
 };
 
+// Precaricamento risorse
 useGLTF.preload('avatar.glb');
+useFBX.preload(ANIMATION_URLS.talking);
+useFBX.preload(ANIMATION_URLS.rumba);
+useFBX.preload(ANIMATION_URLS.idle);

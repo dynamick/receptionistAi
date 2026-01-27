@@ -11,10 +11,12 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [audioAmplitude, setAudioAmplitude] = useState(0);
+  
+  // State for live subtitles (UI only)
   const [lastTranscript, setLastTranscript] = useState('');
   const [userTranscript, setUserTranscript] = useState('');
 
-  // Refs for audio processing
+  // Refs for audio processing and reliable transcript accumulation
   const audioCtxRef = useRef<{
     input: AudioContext;
     output: AudioContext;
@@ -25,6 +27,9 @@ const App: React.FC = () => {
   const sessionRef = useRef<any>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const nextStartTimeRef = useRef(0);
+  
+  // Persistent transcription buffers to avoid stale closures
+  const fullTranscriptRef = useRef({ user: '', model: '' });
 
   const initAudio = useCallback(async () => {
     if (audioCtxRef.current) return audioCtxRef.current;
@@ -34,7 +39,6 @@ const App: React.FC = () => {
     const inputNode = inputAudioContext.createGain();
     const outputNode = outputAudioContext.createGain();
     
-    // Analyser for mouth movement (audio out)
     const analyser = outputAudioContext.createAnalyser();
     analyser.fftSize = 256;
     outputNode.connect(analyser);
@@ -65,7 +69,6 @@ const App: React.FC = () => {
         callbacks: {
           onopen: () => {
             setStatus(ConnectionStatus.CONNECTED);
-            // Start sending mic audio
             const source = audio.input.createMediaStreamSource(stream);
             const scriptProcessor = audio.input.createScriptProcessor(4096, 1, 1);
             
@@ -81,7 +84,7 @@ const App: React.FC = () => {
             scriptProcessor.connect(audio.input.destination);
           },
           onmessage: async (message: LiveServerMessage) => {
-            // Handle Audio output
+            // Audio playback logic
             const audioData = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (audioData) {
               setIsSpeaking(true);
@@ -103,30 +106,46 @@ const App: React.FC = () => {
               };
             }
 
-            // Handle Transcriptions
+            // Reliable Transcription Handling
             if (message.serverContent?.outputTranscription) {
-              setLastTranscript(prev => prev + message.serverContent?.outputTranscription?.text);
+              const text = message.serverContent.outputTranscription.text;
+              fullTranscriptRef.current.model += text;
+              setLastTranscript(fullTranscriptRef.current.model);
             }
             if (message.serverContent?.inputTranscription) {
-              setUserTranscript(prev => prev + message.serverContent?.inputTranscription?.text);
+              const text = message.serverContent.inputTranscription.text;
+              fullTranscriptRef.current.user += text;
+              setUserTranscript(fullTranscriptRef.current.user);
             }
 
             if (message.serverContent?.turnComplete) {
-              setMessages(prev => [
-                ...prev,
-                { role: 'user', text: userTranscript || '...', timestamp: Date.now() },
-                { role: 'model', text: lastTranscript || '...', timestamp: Date.now() }
-              ]);
+              const finalUser = fullTranscriptRef.current.user;
+              const finalModel = fullTranscriptRef.current.model;
+
+              // Only add to log if there is actual content
+              if (finalUser || finalModel) {
+                setMessages(prev => [
+                  ...prev,
+                  { role: 'user', text: finalUser || '...', timestamp: Date.now() },
+                  { role: 'model', text: finalModel || '...', timestamp: Date.now() }
+                ]);
+              }
+              
+              // Reset buffers
+              fullTranscriptRef.current = { user: '', model: '' };
               setLastTranscript('');
               setUserTranscript('');
             }
 
-            // Handle interruptions
             if (message.serverContent?.interrupted) {
               audio.sources.forEach(s => s.stop());
               audio.sources.clear();
               nextStartTimeRef.current = 0;
               setIsSpeaking(false);
+              // Optional: reset current turn buffers on interruption
+              fullTranscriptRef.current = { user: '', model: '' };
+              setLastTranscript('');
+              setUserTranscript('');
             }
           },
           onerror: (e) => {
@@ -139,7 +158,7 @@ const App: React.FC = () => {
         },
         config: {
           responseModalities: [Modality.AUDIO],
-          systemInstruction: "You are a helpful and charismatic AI avatar named Kai. You live in a 3D digital world. Talk to the user naturally and keep your responses friendly and relatively concise.",
+          systemInstruction: "Sei un'assistente AI carismatica e amichevole di nome Kai. Rispondi in modo naturale e sorridi spesso. Mantieni le risposte concise.",
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
           },
@@ -163,7 +182,6 @@ const App: React.FC = () => {
     setStatus(ConnectionStatus.DISCONNECTED);
   };
 
-  // Update audio amplitude for mouth animation
   useEffect(() => {
     let animationFrame: number;
     const updateAmplitude = () => {
@@ -171,7 +189,7 @@ const App: React.FC = () => {
         const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
         analyserRef.current.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        setAudioAmplitude(average / 128); // Normalize to roughly 0-1
+        setAudioAmplitude(average / 128);
       } else {
         setAudioAmplitude(0);
       }
@@ -208,7 +226,7 @@ const App: React.FC = () => {
               className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-4 rounded-full font-bold shadow-xl transition-all transform hover:scale-105 flex items-center gap-2"
             >
               <Power size={20} />
-              Start Conversation
+              Inizia Conversazione
             </button>
           ) : (
             <button 
@@ -216,17 +234,17 @@ const App: React.FC = () => {
               className="bg-red-600 hover:bg-red-500 text-white px-8 py-4 rounded-full font-bold shadow-xl transition-all transform hover:scale-105 flex items-center gap-2"
             >
               <MicOff size={20} />
-              Stop Session
+              Termina Sessione
             </button>
           )}
         </div>
 
-        {/* Live Subtitles */}
+        {/* Live Subtitles Overlay */}
         {(lastTranscript || userTranscript) && (
           <div className="absolute top-20 left-1/2 -translate-x-1/2 w-full max-w-lg px-4 pointer-events-none">
             <div className="bg-black/40 backdrop-blur-sm p-4 rounded-xl border border-white/10 text-center">
               {userTranscript && (
-                <p className="text-slate-400 text-sm mb-1 italic">You: {userTranscript}</p>
+                <p className="text-slate-400 text-sm mb-1 italic">Tu: {userTranscript}</p>
               )}
               {lastTranscript && (
                 <p className="text-white text-lg font-medium">Kai: {lastTranscript}</p>
@@ -241,7 +259,7 @@ const App: React.FC = () => {
         <div className="p-6 border-b border-slate-700 flex items-center justify-between">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Terminal size={20} className="text-indigo-400" />
-            Interaction Log
+            Log Interazione
           </h2>
           <button onClick={() => setMessages([])} className="text-slate-400 hover:text-white transition-colors">
             <RefreshCcw size={16} />
@@ -252,7 +270,7 @@ const App: React.FC = () => {
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-500 text-center px-4">
               <MessageSquare size={48} className="mb-4 opacity-20" />
-              <p>No messages yet. Start a session and say hello!</p>
+              <p>Ancora nessun messaggio. Avvia la sessione e saluta!</p>
             </div>
           ) : (
             messages.map((m, i) => (
@@ -268,7 +286,7 @@ const App: React.FC = () => {
                   {m.text}
                 </div>
                 <span className="text-[10px] text-slate-500 mt-1 uppercase">
-                  {m.role === 'user' ? 'You' : 'Kai'} • {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {m.role === 'user' ? 'Tu' : 'Kai'} • {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
             ))
@@ -279,7 +297,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4 text-xs text-slate-400">
             <div className="flex items-center gap-1">
               <Mic size={14} className={status === ConnectionStatus.CONNECTED ? 'text-green-400' : ''} />
-              Mic Ready
+              Mic Pronto
             </div>
             <div className="flex items-center gap-1">
               <Volume2 size={14} className={isSpeaking ? 'text-indigo-400 animate-pulse' : ''} />
