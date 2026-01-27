@@ -17,7 +17,7 @@ interface AvatarProps {
   audioAmplitude: number;
 }
 
-// URLs delle animazioni caricati dal nuovo CDN per evitare errori di caricamento locale
+// URLs delle animazioni su GitHub (formato RAW per il caricamento)
 const ANIMATION_URLS = {
   talking: 'https://cdn.statically.io/gh/dynamick/cdn@main/receptionistAI/Talking.fbx',
   rumba: 'https://cdn.statically.io/gh/dynamick/cdn@main/receptionistAI/rumba-dancing.fbx',
@@ -31,12 +31,12 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
   // 1. Modello base GLTF (Ready Player Me)
   const { scene, animations: gltfAnimations } = useGLTF(modelUrl);
   
-  // 2. Caricamento file FBX da URL remote (CDN)
+  // 2. Caricamento file FBX da URL remote
   const talkFbx = useFBX(ANIMATION_URLS.talking);
   const idleRumbaFbx = useFBX(ANIMATION_URLS.rumba);
   const idleStandingFbx = useFBX(ANIMATION_URLS.idle);
 
-  // 3. Elaborazione e Retargeting delle animazioni FBX per lo scheletro RPM
+  // 3. Elaborazione e Retargeting
   const allAnimations = useMemo(() => {
     const clips: THREE.AnimationClip[] = [...gltfAnimations];
     
@@ -64,7 +64,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
   const { actions } = useAnimations(allAnimations, group);
   const [currentAction, setCurrentAction] = useState<string | null>(null);
 
-  // Riferimenti alle ossa per modifiche procedurali (seno, testa)
+  // Riferimenti ossa per micro-movimenti e modifiche fisiche
   const bones = useMemo(() => {
     const b: { 
       head?: THREE.Bone; 
@@ -85,7 +85,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
     return b;
   }, [scene]);
 
-  // Logica per innescare un ballo casuale durante l'attesa (idle)
+  // Gestione del ballo casuale durante l'idle
   useEffect(() => {
     if (isSpeaking) {
       setIsRandomDancing(false);
@@ -103,7 +103,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
     return () => clearInterval(interval);
   }, [isSpeaking]);
 
-  // Gestione delle transizioni tra le animazioni (Fade In/Out)
+  // 4. Gestione Transizioni Animazioni
   useEffect(() => {
     if (!actions) return;
     
@@ -131,18 +131,18 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
         setCurrentAction(nextAction);
       }
     }
-  }, [isSpeaking, isRandomDancing, actions, currentAction]);
+  }, [isSpeaking, isRandomDancing, actions, currentAction, allAnimations]);
 
   useFrame((state) => {
     if (!scene) return;
     const t = state.clock.getElapsedTime();
     
-    // Lip Sync e Espressioni facciali basate sui Morph Targets
+    // 5. Lip Sync, Facial Expressions & Body Shape
     scene.traverse((child) => {
       if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
         const mesh = child as THREE.SkinnedMesh;
         if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-          // Apertura bocca (Jaw/JawOpen)
+          // Apertura bocca (Jaw) basata sull'ampiezza audio
           const mouthOpenIdx = mesh.morphTargetDictionary['mouthOpen'] ?? mesh.morphTargetDictionary['jawOpen'];
           if (mouthOpenIdx !== undefined) {
             const target = isSpeaking ? audioAmplitude * 0.8 : 0;
@@ -151,7 +151,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
             mesh.morphTargetInfluences[mouthOpenIdx] = current + (desired - current) * 0.2;
           }
 
-          // Espressione sorriso (Smile)
+          // Sorriso (Smile)
           const smileTargets = ['mouthSmile', 'mouthSmileLeft', 'mouthSmileRight'];
           smileTargets.forEach(name => {
             const idx = mesh.morphTargetDictionary![name];
@@ -164,7 +164,13 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
             }
           });
 
-          // Blinking occhi (Ammiccamento naturale)
+          // Dimensione Corpo/Seno (Morph Target se presente)
+          const breastMorphIdx = mesh.morphTargetDictionary['breastSize'] ?? mesh.morphTargetDictionary['chestSize'];
+          if (breastMorphIdx !== undefined) {
+            mesh.morphTargetInfluences[breastMorphIdx] = 0.8;
+          }
+
+          // Blinking occhi naturale
           const blink = Math.sin(t * 3.8) > 0.98 ? 1 : 0;
           ['eyeBlinkLeft', 'eyeBlinkRight'].forEach(name => {
             const idx = mesh.morphTargetDictionary![name];
@@ -177,17 +183,17 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
       }
     });
 
-    // Scaling delle ossa per personalizzazione fisica (Seno)
+    // 6. Modifiche Fisiche Procedurali (Scaling Ossa)
+    // Forziamo lo scale ad ogni frame per contrastare il reset delle animazioni
     if (bones.leftBreast) bones.leftBreast.scale.set(1.4, 1.4, 1.4);
     if (bones.rightBreast) bones.rightBreast.scale.set(1.4, 1.4, 1.4);
 
-    // Micro-movimenti della testa per dare vita all'avatar in idle
+    // Micro-movimenti procedurali testa per dare vita all'idle
     if (bones.head && !isSpeaking && !isRandomDancing) {
       bones.head.rotation.x += Math.sin(t * 0.4) * 0.0003;
       bones.head.rotation.y += Math.cos(t * 0.3) * 0.0003;
     }
 
-    // Effetto galleggiamento leggero
     if (group.current) {
         group.current.position.y = Math.sin(t * 1.2) * 0.01 - 1.6;
     }
@@ -200,7 +206,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
   );
 };
 
-// Precaricamento delle risorse CDN
+// Precaricamento risorse
 useGLTF.preload('avatar.glb');
 useFBX.preload(ANIMATION_URLS.talking);
 useFBX.preload(ANIMATION_URLS.rumba);
