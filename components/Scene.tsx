@@ -10,36 +10,25 @@ interface SceneProps {
   audioAmplitude: number;
 }
 
-/**
- * CameraController gestisce sia lo zoom della telecamera che il target degli OrbitControls.
- * I valori di Y sono stati abbassati per allinearsi alla posizione reale della testa 
- * dell'avatar (considerando l'offset di -1.6 nel componente Avatar).
- */
 const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => {
   const controlsRef = useRef<any>(null);
   
-  // L'avatar è posizionato a Y = -1.6. 
-  // La testa di un modello RPM è a circa 1.65m-1.70m dall'origine del modello.
-  // Quindi la testa nel mondo 3D si trova intorno a Y = 0.05 / 0.1.
-
-  // Inquadratura Normal: Mezzo busto, telecamera leggermente più alta del petto
+  // Posizione e target standard (corpo intero/mezzo busto)
   const normalPos = new THREE.Vector3(0, 0, 1.5);
   const normalTarget = new THREE.Vector3(0, -0.3, 0);
   
-  // Inquadratura Zoom: Primissimo piano centrato sugli occhi/bocca (Y ≈ 0.05)
-  const zoomPos = new THREE.Vector3(0, 0.05, 0.55);
-  const zoomTarget = new THREE.Vector3(0, 0.05, 0);
+  // Posizione e target per il parlato (zoom ridotto rispetto a prima)
+  // Prima era Z=0.55, ora usiamo Z=1.1 per uno zoom più discreto
+  const zoomPos = new THREE.Vector3(0, -0.1, 1.1);
+  const zoomTarget = new THREE.Vector3(0, -0.15, 0);
 
   useFrame((state) => {
-    const step = 0.06; // Velocità di transizione fluida
-    
+    const step = 0.05; // Leggermente più lento per fluidità
     const targetPos = isSpeaking ? zoomPos : normalPos;
     const targetLookAt = isSpeaking ? zoomTarget : normalTarget;
-
-    // 1. Muoviamo la telecamera
+    
     state.camera.position.lerp(targetPos, step);
     
-    // 2. Aggiorniamo il target degli OrbitControls
     if (controlsRef.current) {
       controlsRef.current.target.lerp(targetLookAt, step);
       controlsRef.current.update();
@@ -50,8 +39,8 @@ const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => 
     <OrbitControls 
       ref={controlsRef}
       enablePan={false}
-      minDistance={0.3}
-      maxDistance={3}
+      minDistance={0.5}
+      maxDistance={4}
       minPolarAngle={Math.PI / 4}
       maxPolarAngle={Math.PI / 1.7}
       enableDamping

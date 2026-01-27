@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame, ThreeElements } from '@react-three/fiber';
-import { useGLTF, useAnimations } from '@react-three/drei';
+import { useGLTF, useAnimations, useFBX } from '@react-three/drei';
 import * as THREE from 'three';
 
 // Extend JSX namespace for R3F
@@ -19,125 +19,176 @@ interface AvatarProps {
 
 export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmplitude }) => {
   const group = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(modelUrl);
-  const { actions } = useAnimations(animations, group);
+  const [isRandomDancing, setIsRandomDancing] = useState(false);
+  
+  // 1. Modello base GLTF (Ready Player Me)
+  const { scene, animations: gltfAnimations } = useGLTF(modelUrl);
+  
+  // 2. Caricamento file FBX (Mixamo)
+  const idleRumbaFbx = useFBX('animations/rumba-dancing.fbx');
+  const talkFbx = useFBX('animations/Talking.fbx');
+  const idleStandingFbx = useFBX('animations/standing-idle.fbx');
+
+  // 3. Elaborazione e Retargeting
+  const allAnimations = useMemo(() => {
+    const clips: THREE.AnimationClip[] = [...gltfAnimations];
+    
+    const processFbx = (fbx: THREE.Group, prefix: string) => {
+      if (!fbx) return;
+      fbx.animations.forEach((clip, index) => {
+        const newClip = clip.clone();
+        newClip.name = `${prefix}_${index}`;
+        
+        // Rimuoviamo il prefisso 'mixamorig' per allinearlo allo scheletro RPM
+        newClip.tracks.forEach((track) => {
+          track.name = track.name.replace(/mixamorig|MixamoRig/g, '');
+        });
+        clips.push(newClip);
+      });
+    };
+
+    processFbx(idleRumbaFbx, 'fbx_idle_rumba');
+    processFbx(idleStandingFbx, 'fbx_idle_standing');
+    processFbx(talkFbx, 'fbx_talk');
+    
+    return clips;
+  }, [gltfAnimations, idleRumbaFbx, idleStandingFbx, talkFbx]);
+
+  const { actions } = useAnimations(allAnimations, group);
   const [currentAction, setCurrentAction] = useState<string | null>(null);
 
-  // Riferimenti ai componenti del corpo per animazione procedurale
+  // Riferimenti ossa per micro-movimenti e modifiche fisiche
   const bones = useMemo(() => {
-    const b: { head?: THREE.Bone; neck?: THREE.Bone; spine?: THREE.Bone } = {};
+    const b: { 
+      head?: THREE.Bone; 
+      neck?: THREE.Bone; 
+      leftBreast?: THREE.Bone; 
+      rightBreast?: THREE.Bone 
+    } = {};
     scene.traverse((child) => {
       if ((child as THREE.Bone).isBone) {
-        const name = child.name.toLowerCase();
-        if (name.includes('head')) b.head = child as THREE.Bone;
-        if (name.includes('neck')) b.neck = child as THREE.Bone;
-        if (name.includes('spine')) b.spine = child as THREE.Bone;
+        const name = child.name;
+        const lowerName = name.toLowerCase();
+        if (lowerName.includes('head')) b.head = child as THREE.Bone;
+        if (lowerName.includes('neck')) b.neck = child as THREE.Bone;
+        if (lowerName.includes('leftbreast')) b.leftBreast = child as THREE.Bone;
+        if (lowerName.includes('rightbreast')) b.rightBreast = child as THREE.Bone;
       }
     });
     return b;
   }, [scene]);
 
-  // Gestione Animazioni Base (Clips)
+  // Gestione del ballo casuale durante l'idle
+  useEffect(() => {
+    if (isSpeaking) {
+      setIsRandomDancing(false);
+      return;
+    }
+
+    const triggerChance = () => {
+      if (!isSpeaking && Math.random() < 0.15) {
+        setIsRandomDancing(true);
+        setTimeout(() => setIsRandomDancing(false), 7000);
+      }
+    };
+
+    const interval = setInterval(triggerChance, 12000);
+    return () => clearInterval(interval);
+  }, [isSpeaking]);
+
+  // 4. Gestione Transizioni Animazioni
   useEffect(() => {
     if (!actions) return;
-    const idleName = Object.keys(actions).find(n => n.toLowerCase().includes('idle')) || Object.keys(actions)[0];
-    const talkName = Object.keys(actions).find(n => n.toLowerCase().includes('talk')) || idleName;
-    const nextAction = isSpeaking ? talkName : idleName;
+    
+    const names = Object.keys(actions);
+    const talkName = names.find(n => n.includes('fbx_talk')) || names.find(n => n.toLowerCase().includes('talk'));
+    const idleStandingName = names.find(n => n.includes('fbx_idle_standing'));
+    const idleRumbaName = names.find(n => n.includes('fbx_idle_rumba'));
+    
+    let nextAction = names[0];
+    if (isSpeaking) {
+      nextAction = talkName || names[0];
+    } else if (isRandomDancing) {
+      nextAction = idleRumbaName || idleStandingName || names[0];
+    } else {
+      nextAction = idleStandingName || names[0];
+    }
 
-    if (nextAction !== currentAction) {
+    if (nextAction && nextAction !== currentAction) {
       const prev = currentAction ? actions[currentAction] : null;
       const next = actions[nextAction];
+      
       if (next) {
         if (prev) prev.fadeOut(0.5);
         next.reset().fadeIn(0.5).play();
         setCurrentAction(nextAction);
       }
     }
-  }, [isSpeaking, actions, currentAction]);
+  }, [isSpeaking, isRandomDancing, actions, currentAction, allAnimations]);
 
   useFrame((state) => {
     if (!scene) return;
     const t = state.clock.getElapsedTime();
     
-    // 1. LIP SYNC & FACIAL EXPRESSIONS
+    // 5. Lip Sync, Facial Expressions & Body Shape
     scene.traverse((child) => {
       if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
         const mesh = child as THREE.SkinnedMesh;
         if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-          // Lip Sync naturale: 
+          // Apertura bocca
           const mouthOpenIdx = mesh.morphTargetDictionary['mouthOpen'] ?? mesh.morphTargetDictionary['jawOpen'];
           if (mouthOpenIdx !== undefined) {
-            const rawTarget = isSpeaking ? audioAmplitude * 0.7 : 0;
-            const clampedTarget = Math.min(rawTarget, 0.5); 
-            
-            mesh.morphTargetInfluences[mouthOpenIdx] = THREE.MathUtils.lerp(
-              mesh.morphTargetInfluences[mouthOpenIdx], 
-              clampedTarget, 
-              0.25
-            );
+            const target = isSpeaking ? audioAmplitude * 0.8 : 0;
+            const current = mesh.morphTargetInfluences[mouthOpenIdx];
+            const desired = Math.min(target, 0.45);
+            mesh.morphTargetInfluences[mouthOpenIdx] = current + (desired - current) * 0.2;
           }
 
-          const mouthSmileIdx = mesh.morphTargetDictionary['mouthSmile'];
-          if (mouthSmileIdx !== undefined && isSpeaking) {
-             mesh.morphTargetInfluences[mouthSmileIdx] = THREE.MathUtils.lerp(
-              mesh.morphTargetInfluences[mouthSmileIdx],
-              audioAmplitude * 0.2,
-              0.1
-            );
-          }
-
-          // Sbattere le palpebre automatico
-          const blinkNames = ['eyeBlinkLeft', 'eyeBlinkRight', 'eyesClosed'];
-          const isBlinkTime = Math.sin(t * 3.5) > 0.96; 
-          const blinkValue = isBlinkTime ? 1 : 0;
-          
-          blinkNames.forEach(name => {
+          // Sorriso
+          const smileTargets = ['mouthSmile', 'mouthSmileLeft', 'mouthSmileRight'];
+          smileTargets.forEach(name => {
             const idx = mesh.morphTargetDictionary![name];
             if (idx !== undefined) {
-              mesh.morphTargetInfluences![idx] = THREE.MathUtils.lerp(
-                mesh.morphTargetInfluences![idx], 
-                blinkValue, 
-                0.6
-              );
+              const baseSmile = 0.2;
+              const activeSmile = isSpeaking ? 0.3 : 0;
+              const desiredSmile = baseSmile + activeSmile;
+              const currentSmile = mesh.morphTargetInfluences![idx];
+              mesh.morphTargetInfluences![idx] = currentSmile + (desiredSmile - currentSmile) * 0.1;
+            }
+          });
+
+          // Dimensione Seno (Morph Target se presente nel modello)
+          const breastMorphIdx = mesh.morphTargetDictionary['breastSize'] ?? mesh.morphTargetDictionary['chestSize'];
+          if (breastMorphIdx !== undefined) {
+            mesh.morphTargetInfluences[breastMorphIdx] = 0.8; // Imposta un valore fisso elevato
+          }
+
+          // Blinking occhi
+          const blink = Math.sin(t * 3.8) > 0.98 ? 1 : 0;
+          ['eyeBlinkLeft', 'eyeBlinkRight'].forEach(name => {
+            const idx = mesh.morphTargetDictionary![name];
+            if (idx !== undefined) {
+              const curBlink = mesh.morphTargetInfluences![idx];
+              mesh.morphTargetInfluences![idx] = curBlink + (blink - curBlink) * 0.4;
             }
           });
         }
       }
     });
 
-    // 2. GESTI IDLE PROCEDURALI (Head & Body Movements)
-    if (!isSpeaking) {
-      // Rotazione testa sottile (Nodding/Tilting)
-      if (bones.head) {
-        bones.head.rotation.x += Math.sin(t * 0.5) * 0.0005; // Lieve cenno su/giù
-        bones.head.rotation.y += Math.cos(t * 0.3) * 0.0005; // Lieve rotazione destra/sinistra
-        bones.head.rotation.z += Math.sin(t * 0.2) * 0.0005; // Lieve inclinazione
-      }
-      
-      // Spostamento peso (Body sway)
-      if (group.current) {
-        group.current.rotation.z = THREE.MathUtils.lerp(
-          group.current.rotation.z,
-          Math.sin(t * 0.4) * 0.015,
-          0.05
-        );
-        group.current.rotation.y = THREE.MathUtils.lerp(
-          group.current.rotation.y,
-          Math.cos(t * 0.2) * 0.01,
-          0.05
-        );
-      }
-    } else {
-      // Quando parla, riduciamo i movimenti idle per non andare in conflitto con l'animazione Talk
-      if (group.current) {
-        group.current.rotation.z = THREE.MathUtils.lerp(group.current.rotation.z, 0, 0.1);
-        group.current.rotation.y = THREE.MathUtils.lerp(group.current.rotation.y, 0, 0.1);
-      }
+    // 6. Modifiche Fisiche Procedurali (Scaling Ossa)
+    // Applichiamo lo scale ogni frame nel caso le animazioni Mixamo resettino le ossa
+    if (bones.leftBreast) bones.leftBreast.scale.set(1.4, 1.4, 1.4);
+    if (bones.rightBreast) bones.rightBreast.scale.set(1.4, 1.4, 1.4);
+
+    // Micro-movimenti procedurali testa
+    if (bones.head && !isSpeaking && !isRandomDancing) {
+      bones.head.rotation.x += Math.sin(t * 0.4) * 0.0003;
+      bones.head.rotation.y += Math.cos(t * 0.3) * 0.0003;
     }
 
-    // 3. MOVIMENTO GLOBALE (Floating)
     if (group.current) {
-        group.current.position.y = Math.sin(t * 1.5) * 0.01 - 1.6;
+        group.current.position.y = Math.sin(t * 1.2) * 0.01 - 1.6;
     }
   });
 
