@@ -1,0 +1,7 @@
+{
+  "name": "Gemini 3D Avatar Talk",
+  "description": "An interactive 3D avatar powered by Gemini Live API and Ready Player Me, featuring real-time lip-sync and voice interaction.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
