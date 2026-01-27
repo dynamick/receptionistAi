@@ -207,7 +207,7 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, audioAmpli
 };
 
 // Precaricamento risorse
-useGLTF.preload('avatar.glb');
+useGLTF.preload('https://cdn.statically.io/gh/dynamick/cdn@main/receptionistAI/avatar.glb');
 useFBX.preload(ANIMATION_URLS.talking);
 useFBX.preload(ANIMATION_URLS.rumba);
 useFBX.preload(ANIMATION_URLS.idle);
