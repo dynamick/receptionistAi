@@ -1,5 +1,5 @@
 <div align="center">
-![SCR-20260128-kwcz](https://github.com/user-attachments/assets/6bb18e66-1b9a-44e4-9e53-75e5a0881415)
+<img src="https://github.com/user-attachments/assets/6bb18e66-1b9a-44e4-9e53-75e5a0881415" />
 
 </div>
 
