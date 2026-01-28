@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame, ThreeElements } from '@react-three/fiber';
 import { useGLTF, useAnimations, useFBX } from '@react-three/drei';
-import { AVATAR, ANIMATION_URLS } from '../constants';
+import { AVATARS, ANIMATION_URLS } from '../constants';
 import * as THREE from 'three';
 
 declare global {
@@ -39,17 +39,15 @@ export const Avatar: React.FC<AvatarProps> = ({
   audioAmplitude 
 }) => {
   const group = useRef<THREE.Group>(null);
-  const [isRandomDancing, setIsRandomDancing] = useState(false);
   
+  // Carichiamo il modello GLTF
   const { scene, animations: gltfAnimations } = useGLTF(modelUrl);
   
-  // Base animations
+  // Carichiamo le animazioni FBX
   const talkFbx = useFBX(ANIMATION_URLS.talking);
   const idleRumbaFbx = useFBX(ANIMATION_URLS.rumba);
   const idleStandingFbx = useFBX(ANIMATION_URLS.idle);
   const jumpFbx = useFBX(ANIMATION_URLS.jump);
-  
-  // New animations
   const angryFbx = useFBX(ANIMATION_URLS.angry);
   const greetingFbx = useFBX(ANIMATION_URLS.greeting);
   const hipHopFbx = useFBX(ANIMATION_URLS.hipHop);
@@ -59,13 +57,14 @@ export const Avatar: React.FC<AvatarProps> = ({
 
   const allAnimations = useMemo(() => {
     const clips: THREE.AnimationClip[] = [...gltfAnimations];
+    
     const processFbx = (fbx: THREE.Group, prefix: string) => {
-      if (!fbx) return;
+      if (!fbx || !fbx.animations) return;
       fbx.animations.forEach((clip, index) => {
         const newClip = clip.clone();
         newClip.name = `${prefix}_${index}`;
         newClip.tracks.forEach((track) => {
-          track.name = track.name.replace(/mixamorig|MixamoRig/g, '');
+          track.name = track.name.replace(/^(?:.*[:_])?(mixamorig|MixamoRig|Armature)[:_]*/i, '');
         });
         clips.push(newClip);
       });
@@ -88,24 +87,10 @@ export const Avatar: React.FC<AvatarProps> = ({
   const { actions } = useAnimations(allAnimations, group);
   const [currentAction, setCurrentAction] = useState<string | null>(null);
 
-  const bones = useMemo(() => {
-    const b: { head?: THREE.Bone; leftBreast?: THREE.Bone; rightBreast?: THREE.Bone } = {};
-    scene.traverse((child) => {
-      if ((child as THREE.Bone).isBone) {
-        const lowerName = child.name.toLowerCase();
-        if (lowerName.includes('head')) b.head = child as THREE.Bone;
-        if (lowerName.includes('leftbreast')) b.leftBreast = child as THREE.Bone;
-        if (lowerName.includes('rightbreast')) b.rightBreast = child as THREE.Bone;
-      }
-    });
-    return b;
-  }, [scene]);
-
   useEffect(() => {
     if (!actions) return;
     const names = Object.keys(actions);
     
-    // Helper to find animation by name pattern
     const findAnim = (pattern: string) => names.find(n => n.includes(pattern));
 
     const talkName = findAnim('fbx_talk');
@@ -119,20 +104,20 @@ export const Avatar: React.FC<AvatarProps> = ({
     const lookAroundName = findAnim('fbx_look_around');
     const pointingName = findAnim('fbx_pointing');
     
-    let nextAction = names[0];
+    let nextAction = null;
     
-    // Priority logic for animations
-    if (isJumpCommanded) nextAction = jumpName || names[0];
-    else if (isAngryCommanded) nextAction = angryName || names[0];
-    else if (isGreetingCommanded) nextAction = greetingName || names[0];
-    else if (isHipHopCommanded) nextAction = hipHopName || names[0];
-    else if (isKissCommanded) nextAction = kissName || names[0];
-    else if (isLookAroundCommanded) nextAction = lookAroundName || names[0];
-    else if (isPointingCommanded) nextAction = pointingName || names[0];
-    else if (isRumbaCommanded) nextAction = idleRumbaName || names[0];
-    else if (isSpeaking) nextAction = talkName || names[0];
-    else if (isRandomDancing) nextAction = idleRumbaName || idleStandingName || names[0];
-    else nextAction = idleStandingName || names[0];
+    if (isJumpCommanded) nextAction = jumpName;
+    else if (isAngryCommanded) nextAction = angryName;
+    else if (isGreetingCommanded) nextAction = greetingName;
+    else if (isHipHopCommanded) nextAction = hipHopName;
+    else if (isKissCommanded) nextAction = kissName;
+    else if (isLookAroundCommanded) nextAction = lookAroundName;
+    else if (isPointingCommanded) nextAction = pointingName;
+    else if (isRumbaCommanded) nextAction = idleRumbaName;
+    else if (isSpeaking) nextAction = talkName;
+    else nextAction = idleStandingName;
+
+    if (!nextAction) nextAction = names[0];
 
     if (nextAction && nextAction !== currentAction) {
       const prev = currentAction ? actions[currentAction] : null;
@@ -144,7 +129,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       }
     }
   }, [
-    isSpeaking, isRandomDancing, isRumbaCommanded, isJumpCommanded, 
+    isSpeaking, isRumbaCommanded, isJumpCommanded, 
     isAngryCommanded, isGreetingCommanded, isHipHopCommanded, 
     isKissCommanded, isLookAroundCommanded, isPointingCommanded,
     actions, currentAction
@@ -153,32 +138,44 @@ export const Avatar: React.FC<AvatarProps> = ({
   useFrame((state) => {
     if (!scene) return;
     const t = state.clock.getElapsedTime();
+    
     scene.traverse((child) => {
       if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
         const mesh = child as THREE.SkinnedMesh;
         if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-          const mouthOpenIdx = mesh.morphTargetDictionary['mouthOpen'] ?? mesh.morphTargetDictionary['jawOpen'];
+          // Lip sync robusto: cerchiamo più varianti di nomi morph target
+          const mouthOpenIdx = 
+            mesh.morphTargetDictionary['mouthOpen'] ?? 
+            mesh.morphTargetDictionary['jawOpen'] ?? 
+            mesh.morphTargetDictionary['viseme_aa'] ?? 
+            mesh.morphTargetDictionary['vrc.v_aa'] ??
+            mesh.morphTargetDictionary['MouthOpen'];
+
           if (mouthOpenIdx !== undefined) {
-            const target = isSpeaking ? audioAmplitude * 0.8 : 0;
+            const target = isSpeaking ? audioAmplitude * 1.2 : 0; // Aumentato leggermente il moltiplicatore
             const current = mesh.morphTargetInfluences[mouthOpenIdx];
-            const desired = Math.min(target, 0.45);
-            mesh.morphTargetInfluences[mouthOpenIdx] = current + (desired - current) * 0.2;
+            const desired = Math.min(target, 0.6); // Aumentato il limite massimo di apertura
+            mesh.morphTargetInfluences[mouthOpenIdx] = current + (desired - current) * 0.25;
           }
+
+          // Blinking robusto
           const blink = Math.sin(t * 3.8) > 0.98 ? 1 : 0;
-          ['eyeBlinkLeft', 'eyeBlinkRight'].forEach(name => {
-            const idx = mesh.morphTargetDictionary![name];
-            if (idx !== undefined) {
-              const curBlink = mesh.morphTargetInfluences![idx];
-              mesh.morphTargetInfluences![idx] = curBlink + (blink - curBlink) * 0.4;
-            }
-          });
+          const blinkLeftIdx = mesh.morphTargetDictionary['eyeBlinkLeft'] ?? mesh.morphTargetDictionary['Blink_Left'];
+          const blinkRightIdx = mesh.morphTargetDictionary['eyeBlinkRight'] ?? mesh.morphTargetDictionary['Blink_Right'];
+
+          if (blinkLeftIdx !== undefined) {
+            mesh.morphTargetInfluences[blinkLeftIdx] = mesh.morphTargetInfluences[blinkLeftIdx] + (blink - mesh.morphTargetInfluences[blinkLeftIdx]) * 0.4;
+          }
+          if (blinkRightIdx !== undefined) {
+            mesh.morphTargetInfluences[blinkRightIdx] = mesh.morphTargetInfluences[blinkRightIdx] + (blink - mesh.morphTargetInfluences[blinkRightIdx]) * 0.4;
+          }
         }
       }
     });
 
-    if (bones.leftBreast) bones.leftBreast.scale.set(1.4, 1.4, 1.4);
-    if (bones.rightBreast) bones.rightBreast.scale.set(1.4, 1.4, 1.4);
-    if (group.current) group.current.position.y = Math.sin(t * 1.2) * 0.01 - 1.6;
+    if (group.current) {
+      group.current.position.y = Math.sin(t * 1.2) * 0.01 - 1.6;
+    }
   });
 
   return (
@@ -188,8 +185,9 @@ export const Avatar: React.FC<AvatarProps> = ({
   );
 };
 
-// Preload all assets
-useGLTF.preload(AVATAR.url);
+// Preload assets
+useGLTF.preload(AVATARS.kai);
+useGLTF.preload(AVATARS.mick);
 [
   ANIMATION_URLS.talking, ANIMATION_URLS.rumba, ANIMATION_URLS.idle, 
   ANIMATION_URLS.jump, ANIMATION_URLS.angry, ANIMATION_URLS.greeting,

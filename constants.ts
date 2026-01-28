@@ -1,6 +1,7 @@
 
-export const AVATAR = {
-  url: 'https://storage.googleapis.com/ai-studio-bucket-696108077748-us-west1/services/receptionist-ai/public/animations/avatar.glb'
+export const AVATARS = {
+  kai: 'https://storage.googleapis.com/ai-studio-bucket-696108077748-us-west1/services/receptionist-ai/public/animations/avatar.glb',
+  mick: 'https://storage.googleapis.com/ai-studio-bucket-696108077748-us-west1/services/receptionist-ai/public/animations/avatar-mick.glb'
 };
 
 export const ANIMATION_URLS = {

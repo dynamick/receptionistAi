@@ -4,10 +4,10 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, Float } from '@react-three/drei';
 import { Avatar } from './Avatar';
 import Loader from './Loader';
-import { AVATAR } from '../constants';
 import * as THREE from 'three';
 
 interface SceneProps {
+  modelUrl: string;
   isSpeaking: boolean;
   isRumbaCommanded: boolean;
   isJumpCommanded: boolean;
@@ -53,6 +53,7 @@ const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => 
 };
 
 const Scene: React.FC<SceneProps> = ({ 
+  modelUrl,
   isSpeaking, 
   isRumbaCommanded, 
   isJumpCommanded, 
@@ -74,8 +75,10 @@ const Scene: React.FC<SceneProps> = ({
           <ambientLight intensity={0.5} />
           <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1.2} castShadow />
           <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.2}>
+            {/* Usiamo modelUrl come chiave per resettare completamente il componente Avatar al cambio personaggio */}
             <Avatar 
-              modelUrl={AVATAR.url}
+              key={modelUrl}
+              modelUrl={modelUrl}
               isSpeaking={isSpeaking}
               isRumbaCommanded={isRumbaCommanded}
               isJumpCommanded={isJumpCommanded}
