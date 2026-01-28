@@ -4,11 +4,19 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, Float } from '@react-three/drei';
 import { Avatar } from './Avatar';
 import Loader from './Loader';
+import { AVATAR } from '../constants';
 import * as THREE from 'three';
 
 interface SceneProps {
   isSpeaking: boolean;
   isRumbaCommanded: boolean;
+  isJumpCommanded: boolean;
+  isAngryCommanded: boolean;
+  isGreetingCommanded: boolean;
+  isHipHopCommanded: boolean;
+  isKissCommanded: boolean;
+  isLookAroundCommanded: boolean;
+  isPointingCommanded: boolean;
   audioAmplitude: number;
 }
 
@@ -44,21 +52,39 @@ const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => 
   );
 };
 
-const Scene: React.FC<SceneProps> = ({ isSpeaking, isRumbaCommanded, audioAmplitude }) => {
+const Scene: React.FC<SceneProps> = ({ 
+  isSpeaking, 
+  isRumbaCommanded, 
+  isJumpCommanded, 
+  isAngryCommanded,
+  isGreetingCommanded,
+  isHipHopCommanded,
+  isKissCommanded,
+  isLookAroundCommanded,
+  isPointingCommanded,
+  audioAmplitude 
+}) => {
   return (
     <div className="relative w-full h-full">
       <Loader />
       <Canvas camera={{ position: [0, 0, 1.5], fov: 45 }} className="w-full h-full" shadows>
         <color attach="background" args={['#0f172a']} />
         <Suspense fallback={null}>
-          <Environment preset="city" />
+          <Environment preset="park" />
           <ambientLight intensity={0.5} />
           <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1.2} castShadow />
           <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.2}>
             <Avatar 
-              modelUrl="avatar.glb" 
+              modelUrl={AVATAR.url}
               isSpeaking={isSpeaking}
               isRumbaCommanded={isRumbaCommanded}
+              isJumpCommanded={isJumpCommanded}
+              isAngryCommanded={isAngryCommanded}
+              isGreetingCommanded={isGreetingCommanded}
+              isHipHopCommanded={isHipHopCommanded}
+              isKissCommanded={isKissCommanded}
+              isLookAroundCommanded={isLookAroundCommanded}
+              isPointingCommanded={isPointingCommanded}
               audioAmplitude={audioAmplitude}
             />
           </Float>

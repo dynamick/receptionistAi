@@ -2,6 +2,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame, ThreeElements } from '@react-three/fiber';
 import { useGLTF, useAnimations, useFBX } from '@react-three/drei';
+import { AVATAR, ANIMATION_URLS } from '../constants';
 import * as THREE from 'three';
 
 declare global {
@@ -14,23 +15,47 @@ interface AvatarProps {
   modelUrl: string;
   isSpeaking: boolean;
   isRumbaCommanded: boolean;
+  isJumpCommanded: boolean;
+  isAngryCommanded: boolean;
+  isGreetingCommanded: boolean;
+  isHipHopCommanded: boolean;
+  isKissCommanded: boolean;
+  isLookAroundCommanded: boolean;
+  isPointingCommanded: boolean;
   audioAmplitude: number;
 }
 
-const ANIMATION_URLS = {
-  talking: 'https://storage.googleapis.com/ai-studio-bucket-696108077748-us-west1/services/receptionist-ai/public/animations/Talking.fbx',
-  rumba: 'https://storage.googleapis.com/ai-studio-bucket-696108077748-us-west1/services/receptionist-ai/public/animations/rumba-dancing.fbx',
-  idle: 'https://storage.googleapis.com/ai-studio-bucket-696108077748-us-west1/services/receptionist-ai/public/animations/standing-idle.fbx'
-};
-
-export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, isRumbaCommanded, audioAmplitude }) => {
+export const Avatar: React.FC<AvatarProps> = ({ 
+  modelUrl, 
+  isSpeaking, 
+  isRumbaCommanded, 
+  isJumpCommanded, 
+  isAngryCommanded,
+  isGreetingCommanded,
+  isHipHopCommanded,
+  isKissCommanded,
+  isLookAroundCommanded,
+  isPointingCommanded,
+  audioAmplitude 
+}) => {
   const group = useRef<THREE.Group>(null);
   const [isRandomDancing, setIsRandomDancing] = useState(false);
   
   const { scene, animations: gltfAnimations } = useGLTF(modelUrl);
+  
+  // Base animations
   const talkFbx = useFBX(ANIMATION_URLS.talking);
   const idleRumbaFbx = useFBX(ANIMATION_URLS.rumba);
   const idleStandingFbx = useFBX(ANIMATION_URLS.idle);
+  const jumpFbx = useFBX(ANIMATION_URLS.jump);
+  
+  // New animations
+  const angryFbx = useFBX(ANIMATION_URLS.angry);
+  const greetingFbx = useFBX(ANIMATION_URLS.greeting);
+  const hipHopFbx = useFBX(ANIMATION_URLS.hipHop);
+  const kissFbx = useFBX(ANIMATION_URLS.kiss);
+  const lookAroundFbx = useFBX(ANIMATION_URLS.lookAround);
+  const pointingFbx = useFBX(ANIMATION_URLS.pointing);
 
   const allAnimations = useMemo(() => {
     const clips: THREE.AnimationClip[] = [...gltfAnimations];
@@ -45,11 +70,20 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, isRumbaCom
         clips.push(newClip);
       });
     };
+    
     processFbx(idleRumbaFbx, 'fbx_idle_rumba');
     processFbx(idleStandingFbx, 'fbx_idle_standing');
     processFbx(talkFbx, 'fbx_talk');
+    processFbx(jumpFbx, 'fbx_jump');
+    processFbx(angryFbx, 'fbx_angry');
+    processFbx(greetingFbx, 'fbx_greeting');
+    processFbx(hipHopFbx, 'fbx_hip_hop');
+    processFbx(kissFbx, 'fbx_kiss');
+    processFbx(lookAroundFbx, 'fbx_look_around');
+    processFbx(pointingFbx, 'fbx_pointing');
+    
     return clips;
-  }, [gltfAnimations, idleRumbaFbx, idleStandingFbx, talkFbx]);
+  }, [gltfAnimations, idleRumbaFbx, idleStandingFbx, talkFbx, jumpFbx, angryFbx, greetingFbx, hipHopFbx, kissFbx, lookAroundFbx, pointingFbx]);
 
   const { actions } = useAnimations(allAnimations, group);
   const [currentAction, setCurrentAction] = useState<string | null>(null);
@@ -68,55 +102,53 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, isRumbaCom
   }, [scene]);
 
   useEffect(() => {
-    let timeoutId: number;
-    const scheduleNextDance = () => {
-      const randomDelay = Math.random() * 20000 + 10000;
-      timeoutId = window.setTimeout(() => {
-        if (!isSpeaking && !isRumbaCommanded) {
-          setIsRandomDancing(true);
-          window.setTimeout(() => {
-            setIsRandomDancing(false);
-            scheduleNextDance();
-          }, 7000);
-        } else {
-          scheduleNextDance();
-        }
-      }, randomDelay);
-    };
-    if (!isSpeaking && !isRumbaCommanded) scheduleNextDance();
-    return () => { if (timeoutId) clearTimeout(timeoutId); };
-  }, [isSpeaking, isRumbaCommanded]);
-
-  useEffect(() => {
     if (!actions) return;
     const names = Object.keys(actions);
-    const talkName = names.find(n => n.includes('fbx_talk'));
-    const idleStandingName = names.find(n => n.includes('fbx_idle_standing'));
-    const idleRumbaName = names.find(n => n.includes('fbx_idle_rumba'));
+    
+    // Helper to find animation by name pattern
+    const findAnim = (pattern: string) => names.find(n => n.includes(pattern));
+
+    const talkName = findAnim('fbx_talk');
+    const idleStandingName = findAnim('fbx_idle_standing');
+    const idleRumbaName = findAnim('fbx_idle_rumba');
+    const jumpName = findAnim('fbx_jump');
+    const angryName = findAnim('fbx_angry');
+    const greetingName = findAnim('fbx_greeting');
+    const hipHopName = findAnim('fbx_hip_hop');
+    const kissName = findAnim('fbx_kiss');
+    const lookAroundName = findAnim('fbx_look_around');
+    const pointingName = findAnim('fbx_pointing');
     
     let nextAction = names[0];
     
-    // Priorità: Comando Diretto > Parlato > Ballo Casuale > Idle
-    if (isRumbaCommanded) {
-      nextAction = idleRumbaName || names[0];
-    } else if (isSpeaking) {
-      nextAction = talkName || names[0];
-    } else if (isRandomDancing) {
-      nextAction = idleRumbaName || idleStandingName || names[0];
-    } else {
-      nextAction = idleStandingName || names[0];
-    }
+    // Priority logic for animations
+    if (isJumpCommanded) nextAction = jumpName || names[0];
+    else if (isAngryCommanded) nextAction = angryName || names[0];
+    else if (isGreetingCommanded) nextAction = greetingName || names[0];
+    else if (isHipHopCommanded) nextAction = hipHopName || names[0];
+    else if (isKissCommanded) nextAction = kissName || names[0];
+    else if (isLookAroundCommanded) nextAction = lookAroundName || names[0];
+    else if (isPointingCommanded) nextAction = pointingName || names[0];
+    else if (isRumbaCommanded) nextAction = idleRumbaName || names[0];
+    else if (isSpeaking) nextAction = talkName || names[0];
+    else if (isRandomDancing) nextAction = idleRumbaName || idleStandingName || names[0];
+    else nextAction = idleStandingName || names[0];
 
     if (nextAction && nextAction !== currentAction) {
       const prev = currentAction ? actions[currentAction] : null;
       const next = actions[nextAction];
       if (next) {
-        if (prev) prev.fadeOut(0.5);
-        next.reset().fadeIn(0.5).play();
+        if (prev) prev.fadeOut(0.3);
+        next.reset().fadeIn(0.3).play();
         setCurrentAction(nextAction);
       }
     }
-  }, [isSpeaking, isRandomDancing, isRumbaCommanded, actions, currentAction]);
+  }, [
+    isSpeaking, isRandomDancing, isRumbaCommanded, isJumpCommanded, 
+    isAngryCommanded, isGreetingCommanded, isHipHopCommanded, 
+    isKissCommanded, isLookAroundCommanded, isPointingCommanded,
+    actions, currentAction
+  ]);
 
   useFrame((state) => {
     if (!scene) return;
@@ -156,7 +188,11 @@ export const Avatar: React.FC<AvatarProps> = ({ modelUrl, isSpeaking, isRumbaCom
   );
 };
 
-useGLTF.preload('https://storage.googleapis.com/ai-studio-bucket-696108077748-us-west1/services/receptionist-ai/public/animations/avatar.glb');
-useFBX.preload(ANIMATION_URLS.talking);
-useFBX.preload(ANIMATION_URLS.rumba);
-useFBX.preload(ANIMATION_URLS.idle);
+// Preload all assets
+useGLTF.preload(AVATAR.url);
+[
+  ANIMATION_URLS.talking, ANIMATION_URLS.rumba, ANIMATION_URLS.idle, 
+  ANIMATION_URLS.jump, ANIMATION_URLS.angry, ANIMATION_URLS.greeting,
+  ANIMATION_URLS.hipHop, ANIMATION_URLS.kiss, ANIMATION_URLS.lookAround,
+  ANIMATION_URLS.pointing
+].forEach(url => useFBX.preload(url));
