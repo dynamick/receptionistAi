@@ -39,11 +39,12 @@ export const Avatar: React.FC<AvatarProps> = ({
   audioAmplitude 
 }) => {
   const group = useRef<THREE.Group>(null);
+  const [isAutoLooking, setIsAutoLooking] = useState(false);
   
-  // Carichiamo il modello GLTF
+  // Load the GLTF model
   const { scene, animations: gltfAnimations } = useGLTF(modelUrl);
   
-  // Carichiamo le animazioni FBX
+  // Load FBX animations
   const talkFbx = useFBX(ANIMATION_URLS.talking);
   const idleRumbaFbx = useFBX(ANIMATION_URLS.rumba);
   const idleStandingFbx = useFBX(ANIMATION_URLS.idle);
@@ -63,6 +64,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       fbx.animations.forEach((clip, index) => {
         const newClip = clip.clone();
         newClip.name = `${prefix}_${index}`;
+        // Clean up track names for Mixamo/Ready Player Me compatibility
         newClip.tracks.forEach((track) => {
           track.name = track.name.replace(/^(?:.*[:_])?(mixamorig|MixamoRig|Armature)[:_]*/i, '');
         });
@@ -87,6 +89,29 @@ export const Avatar: React.FC<AvatarProps> = ({
   const { actions } = useAnimations(allAnimations, group);
   const [currentAction, setCurrentAction] = useState<string | null>(null);
 
+  // Dynamic Idle Logic: Periodically trigger lookAround when otherwise idle
+  useEffect(() => {
+    // If any explicit state or speaking is active, disable auto-idle actions
+    if (isSpeaking || isJumpCommanded || isAngryCommanded || isGreetingCommanded || 
+        isHipHopCommanded || isKissCommanded || isLookAroundCommanded || 
+        isPointingCommanded || isRumbaCommanded) {
+      setIsAutoLooking(false);
+      return;
+    }
+
+    const trigger = () => {
+      setIsAutoLooking(true);
+      // Look around for 4.5 seconds (duration of the clip roughly)
+      setTimeout(() => setIsAutoLooking(false), 4500);
+    };
+
+    // Trigger every 12 seconds when idle
+    const interval = setInterval(trigger, 12000);
+    return () => clearInterval(interval);
+  }, [isSpeaking, isJumpCommanded, isAngryCommanded, isGreetingCommanded, 
+      isHipHopCommanded, isKissCommanded, isLookAroundCommanded, 
+      isPointingCommanded, isRumbaCommanded]);
+
   useEffect(() => {
     if (!actions) return;
     const names = Object.keys(actions);
@@ -106,6 +131,7 @@ export const Avatar: React.FC<AvatarProps> = ({
     
     let nextAction = null;
     
+    // Priority Chain
     if (isJumpCommanded) nextAction = jumpName;
     else if (isAngryCommanded) nextAction = angryName;
     else if (isGreetingCommanded) nextAction = greetingName;
@@ -115,6 +141,8 @@ export const Avatar: React.FC<AvatarProps> = ({
     else if (isPointingCommanded) nextAction = pointingName;
     else if (isRumbaCommanded) nextAction = idleRumbaName;
     else if (isSpeaking) nextAction = talkName;
+    // The "Loopable Idle" (periodic look around) plays BEFORE the default standing idle
+    else if (isAutoLooking) nextAction = lookAroundName;
     else nextAction = idleStandingName;
 
     if (!nextAction) nextAction = names[0];
@@ -132,7 +160,7 @@ export const Avatar: React.FC<AvatarProps> = ({
     isSpeaking, isRumbaCommanded, isJumpCommanded, 
     isAngryCommanded, isGreetingCommanded, isHipHopCommanded, 
     isKissCommanded, isLookAroundCommanded, isPointingCommanded,
-    actions, currentAction
+    isAutoLooking, actions, currentAction
   ]);
 
   useFrame((state) => {
@@ -143,7 +171,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
         const mesh = child as THREE.SkinnedMesh;
         if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-          // Lip sync robusto: cerchiamo più varianti di nomi morph target
+          // Lip sync
           const mouthOpenIdx = 
             mesh.morphTargetDictionary['mouthOpen'] ?? 
             mesh.morphTargetDictionary['jawOpen'] ?? 
@@ -152,13 +180,13 @@ export const Avatar: React.FC<AvatarProps> = ({
             mesh.morphTargetDictionary['MouthOpen'];
 
           if (mouthOpenIdx !== undefined) {
-            const target = isSpeaking ? audioAmplitude * 1.2 : 0; // Aumentato leggermente il moltiplicatore
+            const target = isSpeaking ? audioAmplitude * 1.2 : 0;
             const current = mesh.morphTargetInfluences[mouthOpenIdx];
-            const desired = Math.min(target, 0.6); // Aumentato il limite massimo di apertura
+            const desired = Math.min(target, 0.6);
             mesh.morphTargetInfluences[mouthOpenIdx] = current + (desired - current) * 0.25;
           }
 
-          // Blinking robusto
+          // Blinking
           const blink = Math.sin(t * 3.8) > 0.98 ? 1 : 0;
           const blinkLeftIdx = mesh.morphTargetDictionary['eyeBlinkLeft'] ?? mesh.morphTargetDictionary['Blink_Left'];
           const blinkRightIdx = mesh.morphTargetDictionary['eyeBlinkRight'] ?? mesh.morphTargetDictionary['Blink_Right'];
@@ -174,6 +202,7 @@ export const Avatar: React.FC<AvatarProps> = ({
     });
 
     if (group.current) {
+      // Subtle floating effect
       group.current.position.y = Math.sin(t * 1.2) * 0.01 - 1.6;
     }
   });
