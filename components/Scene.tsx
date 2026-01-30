@@ -23,15 +23,17 @@ interface SceneProps {
 const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => {
   const controlsRef = useRef<any>(null);
   
-  // Inquadratura Mezzo Busto (Waist Up)
-  // L'altezza media degli avatar RPM è circa 1.8m. 
-  // Il busto inizia intorno a Y=1.0, la testa a Y=1.6.
-  const normalPos = new THREE.Vector3(0, 1.35, 1.6); 
-  const normalTarget = new THREE.Vector3(0, 1.25, 0); 
+  // Inquadratura Mezzo Busto molto ravvicinata
+  // Avviciniamo la camera (z: 1.2) e puntiamo leggermente sotto il volto (y: 1.5)
+  // per mantenere la testa visibile pur essendo molto vicini.
+  const normalPos = new THREE.Vector3(0, 1.6, 1.2); 
+  const normalTarget = new THREE.Vector3(0, 1.45, 0); 
 
-  // Inquadratura Primo Piano (Portrait) durante il parlato
-  const zoomPos = new THREE.Vector3(0, 1.6, 0.85);
-  const zoomTarget = new THREE.Vector3(0, 1.58, 0); 
+  // Inquadratura Primo Piano (Tight Close-up) durante il parlato
+  // Portiamo la camera estremamente vicina al volto (z: 0.65)
+  // puntando esattamente all'altezza degli occhi (y: 1.65).
+  const zoomPos = new THREE.Vector3(0, 1.65, 0.65);
+  const zoomTarget = new THREE.Vector3(0, 1.65, 0); 
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
@@ -44,14 +46,14 @@ const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => 
     // 2. Transizione fluida (Lerp)
     state.camera.position.lerp(targetPos, step);
     
-    // 3. EFFETTO CAMERA SHAKE MINIMIZZATO
+    // 3. EFFETTO CAMERA SHAKE MINIMIZZATO (Subtle float)
     const shakeFreq = 0.4;
-    const shakeAmp = 0.003; // Ridotto ulteriormente per massima stabilità
+    const shakeAmp = 0.0015; 
     state.camera.position.x += Math.sin(t * shakeFreq) * shakeAmp;
     state.camera.position.y += Math.cos(t * shakeFreq * 0.7) * shakeAmp;
     
-    // Rollio quasi impercettibile
-    state.camera.rotation.z = Math.sin(t * 0.3) * 0.001;
+    // Rollio ridotto al minimo
+    state.camera.rotation.z = Math.sin(t * 0.3) * 0.0003;
 
     // 4. Aggiornamento Target
     if (controlsRef.current) {
@@ -64,8 +66,8 @@ const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => 
     <OrbitControls 
       ref={controlsRef}
       enablePan={false}
-      minDistance={0.5}
-      maxDistance={3}
+      minDistance={0.3}
+      maxDistance={2.5}
       minPolarAngle={Math.PI / 4}
       maxPolarAngle={Math.PI / 1.6}
       enableDamping
@@ -76,24 +78,24 @@ const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => 
 
 const MagicSparkles = () => {
   return (
-    <group position={[0, 1.2, 0]}>
+    <group position={[0, 1.4, 0]}>
       {/* Scintille dorate piccole e lente */}
       <Sparkles 
-        count={40} 
-        scale={[1.5, 2, 1.5]} 
+        count={35} 
+        scale={[2, 2.5, 2]} 
         size={2} 
-        speed={0.3} 
-        opacity={0.8} 
+        speed={0.2} 
+        opacity={0.6} 
         color="#ffd700" 
       />
       {/* Scintille bianche brillanti sporadiche */}
       <Sparkles 
-        count={15} 
-        scale={[2, 2.5, 2]} 
-        size={4} 
-        speed={0.6} 
+        count={12} 
+        scale={[2.5, 3, 2.5]} 
+        size={3} 
+        speed={0.5} 
         noise={1}
-        opacity={1} 
+        opacity={0.8} 
         color="#ffffff" 
       />
     </group>
@@ -118,7 +120,7 @@ const Scene: React.FC<SceneProps> = ({
   return (
     <div className="relative w-full h-full">
       <Loader />
-      <Canvas camera={{ position: [0, 1.5, 2], fov: 45 }} className="w-full h-full" shadows>
+      <Canvas camera={{ position: [0, 1.6, 1.5], fov: 45 }} className="w-full h-full" shadows>
         <Suspense fallback={null}>
           <Environment 
             preset="park" 
