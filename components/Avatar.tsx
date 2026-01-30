@@ -44,6 +44,18 @@ export const Avatar: React.FC<AvatarProps> = ({
   // Load the GLTF model
   const { scene, animations: gltfAnimations } = useGLTF(modelUrl);
   
+  // Enable shadows for the model
+  useEffect(() => {
+    if (scene) {
+      scene.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+    }
+  }, [scene]);
+  
   // Load FBX animations
   const talkFbx = useFBX(ANIMATION_URLS.talking);
   const idleRumbaFbx = useFBX(ANIMATION_URLS.rumba);
@@ -200,11 +212,6 @@ export const Avatar: React.FC<AvatarProps> = ({
         }
       }
     });
-
-    if (group.current) {
-      // Subtle floating effect
-      group.current.position.y = Math.sin(t * 1.2) * 0.01 - 1.6;
-    }
   });
 
   return (

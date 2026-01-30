@@ -1,7 +1,7 @@
 
 import React, { Suspense, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows, Float } from '@react-three/drei';
+import { OrbitControls, Environment, ContactShadows, Sparkles } from '@react-three/drei';
 import { Avatar } from './Avatar';
 import Loader from './Loader';
 import * as THREE from 'three';
@@ -22,16 +22,38 @@ interface SceneProps {
 
 const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => {
   const controlsRef = useRef<any>(null);
-  const normalPos = new THREE.Vector3(0, 0, 1.5);
-  const normalTarget = new THREE.Vector3(0, -0.3, 0);
-  const zoomPos = new THREE.Vector3(0, -0.1, 1.1);
-  const zoomTarget = new THREE.Vector3(0, -0.15, 0);
+  
+  // Inquadratura Mezzo Busto (Waist Up)
+  // L'altezza media degli avatar RPM è circa 1.8m. 
+  // Il busto inizia intorno a Y=1.0, la testa a Y=1.6.
+  const normalPos = new THREE.Vector3(0, 1.35, 1.6); 
+  const normalTarget = new THREE.Vector3(0, 1.25, 0); 
+
+  // Inquadratura Primo Piano (Portrait) durante il parlato
+  const zoomPos = new THREE.Vector3(0, 1.6, 0.85);
+  const zoomTarget = new THREE.Vector3(0, 1.58, 0); 
 
   useFrame((state) => {
+    const t = state.clock.getElapsedTime();
     const step = 0.05;
+    
+    // 1. Calcolo target base per Zoom/Normal
     const targetPos = isSpeaking ? zoomPos : normalPos;
     const targetLookAt = isSpeaking ? zoomTarget : normalTarget;
+    
+    // 2. Transizione fluida (Lerp)
     state.camera.position.lerp(targetPos, step);
+    
+    // 3. EFFETTO CAMERA SHAKE MINIMIZZATO
+    const shakeFreq = 0.4;
+    const shakeAmp = 0.003; // Ridotto ulteriormente per massima stabilità
+    state.camera.position.x += Math.sin(t * shakeFreq) * shakeAmp;
+    state.camera.position.y += Math.cos(t * shakeFreq * 0.7) * shakeAmp;
+    
+    // Rollio quasi impercettibile
+    state.camera.rotation.z = Math.sin(t * 0.3) * 0.001;
+
+    // 4. Aggiornamento Target
     if (controlsRef.current) {
       controlsRef.current.target.lerp(targetLookAt, step);
       controlsRef.current.update();
@@ -43,12 +65,38 @@ const CameraController: React.FC<{ isSpeaking: boolean }> = ({ isSpeaking }) => 
       ref={controlsRef}
       enablePan={false}
       minDistance={0.5}
-      maxDistance={4}
+      maxDistance={3}
       minPolarAngle={Math.PI / 4}
-      maxPolarAngle={Math.PI / 1.7}
+      maxPolarAngle={Math.PI / 1.6}
       enableDamping
       dampingFactor={0.05}
     />
+  );
+};
+
+const MagicSparkles = () => {
+  return (
+    <group position={[0, 1.2, 0]}>
+      {/* Scintille dorate piccole e lente */}
+      <Sparkles 
+        count={40} 
+        scale={[1.5, 2, 1.5]} 
+        size={2} 
+        speed={0.3} 
+        opacity={0.8} 
+        color="#ffd700" 
+      />
+      {/* Scintille bianche brillanti sporadiche */}
+      <Sparkles 
+        count={15} 
+        scale={[2, 2.5, 2]} 
+        size={4} 
+        speed={0.6} 
+        noise={1}
+        opacity={1} 
+        color="#ffffff" 
+      />
+    </group>
   );
 };
 
@@ -57,25 +105,43 @@ const Scene: React.FC<SceneProps> = ({
   isSpeaking, 
   isRumbaCommanded, 
   isJumpCommanded, 
-  isAngryCommanded,
-  isGreetingCommanded,
+  isAngryCommanded, 
+  isGreetingCommanded, 
   isHipHopCommanded,
   isKissCommanded,
   isLookAroundCommanded,
   isPointingCommanded,
   audioAmplitude 
 }) => {
+  const floorHeight = 0;
+
   return (
     <div className="relative w-full h-full">
       <Loader />
-      <Canvas camera={{ position: [0, 0, 1.5], fov: 45 }} className="w-full h-full" shadows>
-        <color attach="background" args={['#0f172a']} />
+      <Canvas camera={{ position: [0, 1.5, 2], fov: 45 }} className="w-full h-full" shadows>
         <Suspense fallback={null}>
-          <Environment preset="park" />
-          <ambientLight intensity={0.5} />
-          <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1.2} castShadow />
-          <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.2}>
-            {/* Usiamo modelUrl come chiave per resettare completamente il componente Avatar al cambio personaggio */}
+          <Environment 
+            preset="park" 
+            background
+            ground={{
+              height: 10,
+              radius: 60,
+              scale: 100
+            }}
+          />
+          <ambientLight intensity={0.6} />
+          <spotLight 
+            position={[2, 4, 3]} 
+            angle={0.5} 
+            penumbra={1} 
+            intensity={1.5} 
+            castShadow 
+            shadow-mapSize={[1024, 1024]}
+            shadow-bias={-0.0001}
+          />
+          <spotLight position={[-5, 5, 5]} angle={0.5} penumbra={1} intensity={0.5} color="#dbeafe" />
+
+          <group position={[0, floorHeight, 0]}>
             <Avatar 
               key={modelUrl}
               modelUrl={modelUrl}
@@ -90,8 +156,25 @@ const Scene: React.FC<SceneProps> = ({
               isPointingCommanded={isPointingCommanded}
               audioAmplitude={audioAmplitude}
             />
-          </Float>
-          <ContactShadows opacity={0.4} scale={10} blur={2.5} far={4} resolution={256} color="#000000" />
+          </group>
+
+          {/* Effetto Magico Sparkles */}
+          <MagicSparkles />
+
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow>
+            <planeGeometry args={[20, 20]} />
+            <shadowMaterial transparent opacity={0.3} />
+          </mesh>
+
+          <ContactShadows 
+            position={[0, 0.002, 0]} 
+            opacity={0.6} 
+            scale={10} 
+            blur={2.5} 
+            far={1.5} 
+            resolution={256} 
+            color="#000000" 
+          />
         </Suspense>
         <CameraController isSpeaking={isSpeaking} />
       </Canvas>
